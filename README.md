@@ -24,22 +24,14 @@ A atividade foi dividida em cinco cenários práticos:
 
 | Item | Informação |
 |---|---|
-| Sistema Operacional | Ubuntu Linux em VM Oracle VirtualBox |
+| Sistema Operacional | Ubuntu Linux 24.04.1 LTS em VM Oracle VirtualBox |
 | Docker Engine | Docker version 29.1.3, build 29.1.3-0ubuntu3~24.04.1 |
 | Docker Compose | Docker Compose version v2.27.0 |
 | Git | git version 2.43.0 |
+| Hardware da VM | 2 vCPUs, 4 GB RAM, disco VDI dinamico com capacidade de 25 GB |
 | Terminal | Terminal Linux |
 | Editor de texto | Nano |
 | Repositório GitHub | `infra-persistencia-docker` |
-
-> Observação: para validar a versão exata do Ubuntu e os dados de hardware da VM, podem ser utilizados os comandos abaixo:
-
-```bash
-lsb_release -a
-nproc
-free -h
-df -h /
-```
 
 ## 3. Verificações Obrigatórias Antes do Início
 
@@ -63,9 +55,7 @@ Resultado esperado:
 
 ![Estrutura e versões](screenshots/ambiente/01-estrutura-versoes-docker-compose.png)
 
-![Git version](screenshots/ambiente/02-git-version.png)
-
-![Docker hello-world](screenshots/ambiente/03-docker-hello-world.png)
+![Versões Git e Docker hello-world](screenshots/ambiente/02-versoes-git-hello-world.png)
 
 ## 4. Estrutura do Projeto
 
@@ -233,6 +223,11 @@ Validar se o arquivo foi criado:
 ls -lh backups/
 ```
 
+Arquivos esperados no repositório após a execução:
+
+- `backups/mysql-backup.tar.gz`
+- `backups/empresa.sql`
+
 ### 3. Simular perda do volume
 
 Antes de remover o volume, foi necessário parar e remover o container que estava utilizando esse volume.
@@ -257,6 +252,12 @@ docker run --rm \
   -v $(pwd)/backups:/backup \
   ubuntu \
   bash -c "cd /data && tar xzf /backup/mysql-backup.tar.gz"
+```
+
+A restauração também pode ser executada pelo script entregue:
+
+```bash
+./scripts/restore.sh mysql-prod-data backups/mysql-backup.tar.gz
 ```
 
 ### 6. Subir novamente o MySQL com o volume restaurado
@@ -294,8 +295,6 @@ O backup `.tar.gz` copia os arquivos físicos do volume Docker. Essa abordagem p
 ![Restauração do backup tar.gz](screenshots/cenario2/03-restauracao-backup-tar-gz.png)
 
 ![Validação dos dados restaurados](screenshots/cenario2/04-validacao-dados-restaurados.png)
-
-> Evidência pendente recomendada: adicionar print do comando `mysqldump` e da listagem `ls -lh backups/empresa.sql`, pois o professor solicitou explicitamente backup `.tar.gz` e `mysqldump`.
 
 ## Conclusão do cenário
 
@@ -446,11 +445,13 @@ O volume `shared-data` foi montado no caminho `/data` em dois containers diferen
 
 ![Criação do volume compartilhado](screenshots/cenario4/01-volume-shared-data.png)
 
-![Produtor escreve e consumidor lê](screenshots/cenario4/02-produtor-escreve-consumidor-le.png)
+![Containers produtor e consumidor](screenshots/cenario4/02-containers-compartilhados.png)
 
-![Consumidor escreve no volume](screenshots/cenario4/03-consumidor-escreve.png)
+![Produtor escreve e consumidor lê](screenshots/cenario4/03-produtor-escreve-consumidor-le.png)
 
-![Produtor lê alteração do consumidor](screenshots/cenario4/04-produtor-le-bidirecional.png)
+![Consumidor escreve no volume](screenshots/cenario4/04-consumidor-escreve.png)
+
+![Produtor lê alteração do consumidor](screenshots/cenario4/05-produtor-le-bidirecional.png)
 
 ## Conclusão do cenário
 
@@ -470,18 +471,23 @@ Arquivo: `scripts/backup.sh`
 
 ```bash
 #!/bin/bash
+set -euo pipefail
 
-DATA=$(date +%Y-%m-%d_%H-%M-%S)
+VOLUME_NAME="${1:-mysql-prod-data}"
+BACKUP_DIR="${BACKUP_DIR:-backups}"
+TIMESTAMP="$(date +%Y-%m-%d_%H-%M-%S)"
+BACKUP_NAME="${VOLUME_NAME}_${TIMESTAMP}.tar.gz"
+LOG_FILE="${BACKUP_DIR}/backup.log"
 
-mkdir -p backups
+mkdir -p "$BACKUP_DIR"
 
 docker run --rm \
-  -v mysql-prod-data:/data \
-  -v $(pwd)/backups:/backup \
-  ubuntu \
-  tar czf /backup/backup_$DATA.tar.gz -C /data .
+  -v "${VOLUME_NAME}:/data:ro" \
+  -v "$(pwd)/${BACKUP_DIR}:/backup" \
+  ubuntu:22.04 \
+  tar czf "/backup/${BACKUP_NAME}" -C /data .
 
-echo "Backup criado com sucesso: backup_$DATA.tar.gz"
+echo "$(date '+%Y-%m-%d %H:%M:%S') Backup criado com sucesso: ${BACKUP_DIR}/${BACKUP_NAME}" | tee -a "$LOG_FILE"
 ```
 
 ## Comandos executados
@@ -508,6 +514,7 @@ chmod +x scripts/backup.sh
 
 ```bash
 ls -lh backups/
+cat backups/backup.log
 ```
 
 ## Explicação técnica
@@ -516,14 +523,24 @@ O script utiliza a data e hora atual para gerar um nome único para cada arquivo
 
 ## Evidências
 
-![Conteúdo do backup.sh](screenshots/cenario5/01-conteudo-backup-sh.png)
+![Preparação do diretório de scripts](screenshots/cenario5/01-preparacao-diretorio-scripts.png)
 
-![Execução do backup.sh](screenshots/cenario5/02-execucao-script-backup-gerado.png)
+![Conteúdo inicial do backup.sh](screenshots/cenario5/02-conteudo-inicial-backup-sh.png)
+
+![Execução inicial do backup.sh](screenshots/cenario5/03-execucao-inicial-backup-sh.png)
+
+Artefatos entregues no repositório:
+
+- `scripts/backup.sh`
+- `backups/mysql-backup.tar.gz`
+- `backups/backup.log`
+
+O print de execução inicial registrou um erro no comando `tar`. Esse erro foi tratado no troubleshooting e a versão final corrigida do script está disponível em `scripts/backup.sh`.
 
 
 ## Conclusão do cenário
 
-A automação de backup foi validada com sucesso. O script Bash gerou um arquivo compactado com timestamp, facilitando a rotina de backup operacional.
+A automação de backup foi estruturada com script Bash, registro de log e arquivo compactado de backup. Após o erro inicial identificado no `tar`, o script final foi corrigido para gerar arquivos `.tar.gz` com timestamp dentro da pasta `backups/`.
 
 ---
 
@@ -601,9 +618,26 @@ docker rm mysql-prod
 docker volume rm mysql-prod-data
 ```
 
+## Problema 6 - Script de backup criado em diretório incorreto
+
+Durante a organização final, foi identificado que havia uma versão inicial do `backup.sh` dentro de `bind-demo/scripts/`. Esse arquivo estava fora da estrutura obrigatória e continha erro no trecho `-C /data.`.
+
+### Solução
+
+O script incorreto foi removido da área do bind mount e a versão corrigida foi mantida em:
+
+```bash
+scripts/backup.sh
+```
+
+O comando correto de compactação usa espaço entre o diretório de origem e o ponto final:
+
+```bash
+tar czf "/backup/${BACKUP_NAME}" -C /data .
+```
+
 # 7. Conclusão
 
 A atividade permitiu demonstrar conceitos essenciais de persistência de dados com Docker. No primeiro cenário, foi validado que volumes nomeados preservam dados mesmo após a remoção de containers. No segundo cenário, foram aplicadas estratégias de backup e restauração utilizando arquivos compactados e backup lógico. No terceiro cenário, foi demonstrado o uso de bind mounts para sincronização entre host e container. No quarto cenário, foi validado o compartilhamento de dados entre containers por meio de volume comum. Por fim, no quinto cenário, foi criado um script Bash para automatizar a geração de backups.
 
 Com isso, foi possível compreender a importância dos volumes Docker, das estratégias de backup e da automação em ambientes de infraestrutura conteinerizada.
-

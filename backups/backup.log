@@ -1,0 +1,3 @@
+2026-05-25 14:07:39 Execucao inicial do backup automatizado registrada em screenshots/cenario5/03-execucao-inicial-backup-sh.png.
+2026-05-25 14:07:39 Erro de compactacao identificado durante a execucao inicial: comando tar usando -C /data. sem separacao do ponto final.
+2026-05-25 17:40:00 Script final corrigido em scripts/backup.sh para usar tar czf "/backup/${BACKUP_NAME}" -C /data .
